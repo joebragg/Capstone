@@ -1,0 +1,183 @@
+---
+title: "Coursera Data Science Capstone - Milestone Report"
+author: "Joe Bragg"
+date: "Wednesday, March 25, 2015"
+output: html_document
+---
+## Project Objectives
+The objective of this capstone project is to build a Shiny application that will predict the next word based on a phase of one or more words entered in a text box. The raw data is comprised of three en_US filtered text file samples originally from blogs, news articles and tweets from Twitter from [HC Corpora](http://www.corpora.heliohost.org). Below is a summary of my analysis to date.
+
+## Analysis to Date
+
+### Downloading & Cleaning the Data
+
+```{r,cache=TRUE,echo=FALSE}
+if(!file.exists("data/Coursera-SwiftKey.zip")) {
+  download.file("http://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip",
+                destfile = "data/Coursera-SwiftKey.zip",mode="wb")
+  unzip("data/Coursera-SwiftKey.zip",exdir="data")
+}
+blogs.con<-file("data/final/en_US/en_US.blogs.txt",open="r", encoding="windows-1252")
+news.con<-file("data/final/en_US/en_US.news.txt",open="r", encoding="windows-1252")
+twitter.con<-file("data/final/en_US/en_US.twitter.txt",open="r", encoding="windows-1252")
+
+blogs.txt<-readLines(blogs.con, skipNul = TRUE, warn=FALSE)
+news.txt<-readLines(news.con, skipNul = TRUE, warn=FALSE)
+twitter.txt<-readLines(twitter.con, skipNul = TRUE, warn=FALSE)
+
+close(blogs.con)
+close(news.con)
+close(twitter.con)
+
+raw.txt<-c(blogs.txt,news.txt,twitter.txt)
+```
+The blog file has `r length(blogs.txt)` lines, the news file has `r length(news.txt)` lines and the twitter file has `r length(twitter.txt)` lines. That is a total of `r length(raw.txt)` lines of raw text.
+
+```{r,cache=TRUE,echo=FALSE}
+num.lines<-length(raw.txt)
+#Split out individual sentences
+raw.txt<-unlist(strsplit( raw.txt, "\\. |! |\\? "))
+```
+
+With the goal in mind to predict the next word based on the previous phrase we will break each line of text into sentences. The number of sentences is `r length(raw.txt)` or on average `r round(length(raw.txt)/num.lines,2)` sentences per line of text.
+
+```{r,cache=TRUE,echo=FALSE}
+#Remove sentences with non-english words/non-ansii characters
+sentences.non.ascii<-grep("nonascii", iconv(raw.txt, "windows-1252", "ASCII", sub="nonascii"))
+```
+
+`r round(length(sentences.non.ascii)/length(raw.txt)*100,2)`% of these sentences contain non-ASCII characters which can indicate non-English words or characters. Given the small percentage and the likely small contribution these will have to prediction, these sentences will be removed from the corpus.
+
+```{r,cache=TRUE,echo=FALSE}
+raw.txt<-raw.txt[-sentences.non.ascii]
+```
+
+Another consideration is whether or not to factor in numbers in the analysis. Just removing numbers could cause inaccurate predictions. Given numbers are used in various context including quantities, dates, measurements (ex. 4lbs) addresses, short-hand (ex. U 2, Me 2), etc., simple substitution with word equivalents or "#" would have limited value in our application. Given only `r round(length(grep("[0-9]",raw.txt))/length(raw.txt)*100,2)`% of the sentences have numbers, these sentences will be removed.
+
+```{r,cache=TRUE,echo=FALSE}
+#Remove sentences with numbers
+sentences.numbers<-grep("[0-9]",raw.txt)
+raw.txt<-raw.txt[-sentences.numbers]
+
+#convert to all lower case letters
+raw.txt<-tolower(raw.txt)
+
+# Remove punctuation except apostrophes in contractions & dashes in hyphenated words
+raw.txt<-gsub("[^[:alnum:][:space:]'-]", " ", raw.txt)
+raw.txt<-gsub(" '+", " ", raw.txt)
+raw.txt<-gsub("'+ ", " ", raw.txt)
+raw.txt<-gsub(" -+", " ", raw.txt)
+raw.txt<-gsub("-+ ", " ", raw.txt)
+raw.txt<-gsub("^[-' ]", "", raw.txt)
+raw.txt<-gsub("[-' ]$", "", raw.txt)
+raw.txt<-gsub("-", " ", raw.txt)
+
+#Substitute (CENSORED) for profane words
+bad.words<-" anal | anus | arse | ass | asses | asshole | assholes | bastard | bitch | bitches | bitching | bloody | blowjob | blowjobs | bollock | boner | boob | boobs | bugger | bum | butt | butthole | clit | clitoris | clits | cock | cocks | cocksuck | cocksucker | cocksucking | coon | crap | cum | cumming | cumshot | cunt | cunts | damn | dick | dickhead | dildo | dildos | duche | ejaculate | ejaculated | ejaculating  | fuck | fucking | fag | faggitt | faggot | faggs | fagot | fagots | fags | fatass | fucked | fucker | fuckers | fuckin | fucking | gangbang | gangbanged  | god-dam | god-damned | goddamn | goddamned | hardcoresex  | hell | hoar | homo | horny | hotsex | jackoff | labia | lmfao | masterbate | masterbation | masterbations | masturbate | mofo | mothafucker | mothafuckers | mothafuckin | mothafucking  | motherfuck | motherfucked | motherfucker | motherfuckers | motherfucking | motherfuckings | muther | nigga | niggas | nigger | niggers  | orgasim  | orgasims  | orgasm | orgasms  | pecker | pissed | pisser | pissers | pissing | pussies | pussy | s.o.b. | sex | shag | shaggin | shagging | shit | shithead | shitted | shitter | shitters  | shitting | shitty  | slut | sluts | snatch | son-of-a-bitch | tit | tits | titties | turd | twat | wank | wanker | whore "
+raw.txt<-gsub(bad.words, "(CENSORED)", raw.txt)
+
+#Remove extra spaces
+raw.txt<-gsub(" {2,}", " ", raw.txt)
+
+#Remove short sentences
+word.counts<-sapply(gregexpr(" ", raw.txt), length) + 1
+raw.txt<-raw.txt[!word.counts<3]
+
+raw.txt<-gsub("^","<s> ",raw.txt)
+raw.txt<-gsub("$"," <e>",raw.txt)
+
+word.counts<-sapply(gregexpr(" ", raw.txt), length) + 1
+```
+
+To complete the cleaning of the data all punctuation are removed (except single quotes in contractions), a list of profane words are replaced with (CENSORED), all text is converted to lower case letters and extra spaces are removed. If any of the resulting lines of text are shorter than 3 words, those lines are removed and the result is a clean corpus
+
+As a final step, "\<s>" is appended to the beginning and "\<e>" is appended to the end of each line to indicate the start and end of each sentence.
+
+This clean data set includes `r length(raw.txt)` lines with an average of `r round(mean(word.counts),2)` words each and a total of `r prettyNum(sum(word.counts))` words.
+
+### Data Exploration
+
+Given the large size of this corpus and limited computational resources, the cleaned data set is randomly sampled. 1/100th of the lines are used. This sampled corpus is then broken down into 1 - 5 N-grams. Below are frequency bar charts of the top 25 N-grams.
+
+```{r,cache=TRUE,echo=FALSE}
+suppressMessages(library(qdap))
+suppressMessages(library("RWeka"))
+suppressMessages(library("tm"))
+
+set.seed(1234)
+
+random.sample<-sample(raw.txt,length(raw.txt)/100)
+random.sample<-replace_contraction(random.sample)
+  
+ptd<- PlainTextDocument(random.sample)
+sample.1Gtokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 1, max = 1))
+sample.2Gtokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+sample.3Gtokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 3, max = 3))
+sample.4Gtokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 4, max = 4))
+sample.5Gtokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 5, max = 5))
+
+sample.1Gfreq <- sort(termFreq(ptd,control = list(tokenize = sample.1Gtokenizer)),
+                      decreasing=TRUE)
+sample.2Gfreq <- sort(termFreq(ptd, control = list(tokenize = sample.2Gtokenizer)),
+                      decreasing=TRUE)
+sample.3Gfreq <- sort(termFreq(ptd, control = list(tokenize = sample.3Gtokenizer)),
+                      decreasing=TRUE)
+sample.4Gfreq <- sort(termFreq(ptd, control = list(tokenize = sample.4Gtokenizer)),
+                      decreasing=TRUE)
+sample.5Gfreq <- sort(termFreq(ptd, control = list(tokenize = sample.5Gtokenizer)),
+                      decreasing=TRUE)
+
+df.1Gfreq<-data.frame(Phrase=names(sample.1Gfreq),Freq=sample.1Gfreq,LogProb=log(sample.1Gfreq/length(sample.1Gfreq)))
+df.1Gfreq$Phrase <- factor(df.1Gfreq$Phrase, levels = df.1Gfreq$Phrase[order(df.1Gfreq$Freq)])
+
+df.2Gfreq<-data.frame(Phrase=names(sample.2Gfreq),Freq=sample.2Gfreq,LogProb=log(sample.2Gfreq/length(sample.2Gfreq)))
+df.2Gfreq$Phrase <- factor(df.2Gfreq$Phrase, levels = df.2Gfreq$Phrase[order(df.2Gfreq$Freq)])
+
+df.3Gfreq<-data.frame(Phrase=names(sample.3Gfreq),Freq=sample.3Gfreq,LogProb=log(sample.3Gfreq/length(sample.3Gfreq)))
+df.3Gfreq$Phrase <- factor(df.3Gfreq$Phrase, levels = df.3Gfreq$Phrase[order(df.3Gfreq$Freq)])
+
+df.4Gfreq<-data.frame(Phrase=names(sample.4Gfreq),Freq=sample.4Gfreq,LogProb=log(sample.4Gfreq/length(sample.4Gfreq)))
+df.4Gfreq$Phrase <- factor(df.4Gfreq$Phrase, levels = df.4Gfreq$Phrase[order(df.4Gfreq$Freq)])
+
+df.5Gfreq<-data.frame(Phrase=names(sample.5Gfreq),Freq=sample.5Gfreq,LogProb=log(sample.5Gfreq/length(sample.5Gfreq)))
+df.5Gfreq$Phrase <- factor(df.5Gfreq$Phrase, levels = df.5Gfreq$Phrase[order(df.5Gfreq$Freq)])
+```
+
+```{r,cache=TRUE,echo=FALSE,fig.width=8,fig.height=3}
+g<-ggplot(df.1Gfreq[3:25,],aes(x=Phrase,y=Freq))
+g<-g+geom_bar(stat="identity")+coord_flip()
+g<-g+labs(title = "Top 25 1-Gram Frequencies")
+g
+```
+
+```{r,cache=TRUE,echo=FALSE,fig.width=8,fig.height=3}
+g<-ggplot(df.2Gfreq[1:25,],aes(x=Phrase,y=Freq))
+g<-g+geom_bar(stat="identity")+coord_flip()
+g<-g+labs(title = "Top 25 2-Gram Frequencies")
+g
+```
+
+```{r,cache=TRUE,echo=FALSE,fig.width=8,fig.height=3}
+g<-ggplot(df.3Gfreq[1:25,],aes(x=Phrase,y=Freq))
+g<-g+geom_bar(stat="identity")+coord_flip()
+g<-g+labs(title = "Top 25 3-Gram Frequencies")
+g
+```
+
+```{r,cache=TRUE,echo=FALSE,fig.width=8,fig.height=3}
+g<-ggplot(df.4Gfreq[1:25,],aes(x=Phrase,y=Freq))
+g<-g+geom_bar(stat="identity")+coord_flip()
+g<-g+labs(title = "Top 25 4-Gram Frequencies")
+g
+```
+
+```{r,cache=TRUE,echo=FALSE,fig.width=8,fig.height=3}
+g<-ggplot(df.5Gfreq[1:25,],aes(x=Phrase,y=Freq))
+g<-g+geom_bar(stat="identity")+coord_flip()
+g<-g+labs(title = "Top 25 5-Gram Frequencies")
+g
+```
+
+## Future Plans
+
+The N-gram data sets along with the use of Markov Chains will be used to construct a prediction algorithm for the "next word" in a sentence. Basically, Markov Chains provide a way to predict the next word based on the previous N words given the probabilities from the sampled corpus. The prediction models will be trained on a subset of N-grams and tested on a separate subset of N-grams to ensure accuracy and that we are not "over-fitting" our model to the training data. The goal is analyze several models and choose the model that provides the best predictions.
