@@ -5,7 +5,7 @@ date: "Wednesday, March 25, 2015"
 output: html_document
 ---
 ## Project Objectives
-The objective of this capstone project is to build a Shiny application that will predict the next word based on a phase of one or more words entered in a text box. The raw data is comprised of three en_US filtered text file samples originally from blogs, news articles and tweets from Twitter from [HC Corpora](http://www.corpora.heliohost.org). Below is a summary of my analysis to date.
+The objective of this capstone project is to build a Shiny application that will predict the next word based on a phase of one or more words entered in a text box. The raw data is comprised of three en_US filtered text file samples originally from blogs, news articles and Twitter tweets from [HC Corpora](http://www.corpora.heliohost.org). Below is a summary of my analysis to date.
 
 ## Analysis to Date
 
@@ -29,9 +29,21 @@ close(blogs.con)
 close(news.con)
 close(twitter.con)
 
+library(stringi)
+
+word.counts.blogs<-sum(stri_count_words(blogs.txt))
+word.counts.news<-sum(stri_count_words(news.txt))
+word.counts.twitter<-sum(stri_count_words(twitter.txt))
+
 raw.txt<-c(blogs.txt,news.txt,twitter.txt)
 ```
-The blog file has `r length(blogs.txt)` lines, the news file has `r length(news.txt)` lines and the twitter file has `r length(twitter.txt)` lines. That is a total of `r length(raw.txt)` lines of raw text.
+Below is a summary of the three en\_US files we will be using.
+
+File|Size (Mb)|Lines|Words
+----|----|-----|-----
+en\_US.blogs.txt|`r round(file.info("data/final/en_US/en_US.blogs.txt")$size/1024^2,2)`|`r length(blogs.txt)`|`r prettyNum(word.counts.blogs)`
+en\_US.news.txt|`r round(file.info("data/final/en_US/en_US.news.txt")$size/1024^2,2)`|`r length(news.txt)`|`r prettyNum(word.counts.news)`
+en\_US.twitter.txt|`r round(file.info("data/final/en_US/en_US.twitter.txt")$size/1024^2,2)`|`r length(twitter.txt)`|`r prettyNum(word.counts.twitter)`
 
 ```{r,cache=TRUE,echo=FALSE}
 num.lines<-length(raw.txt)
@@ -39,7 +51,7 @@ num.lines<-length(raw.txt)
 raw.txt<-unlist(strsplit( raw.txt, "\\. |! |\\? "))
 ```
 
-With the goal in mind to predict the next word based on the previous phrase we will break each line of text into sentences. The number of sentences is `r length(raw.txt)` or on average `r round(length(raw.txt)/num.lines,2)` sentences per line of text.
+With the goal in mind to predict the next word in a sentence based on the previous words, we will break each line of text into sentences. The number of sentences is `r length(raw.txt)` or on average `r round(length(raw.txt)/num.lines,2)` sentences per line of text.
 
 ```{r,cache=TRUE,echo=FALSE}
 #Remove sentences with non-english words/non-ansii characters
@@ -97,7 +109,7 @@ This clean data set includes `r length(raw.txt)` lines with an average of `r rou
 
 ### Data Exploration
 
-Given the large size of this corpus and limited computational resources, the cleaned data set is randomly sampled. 1/100th of the lines are used. This sampled corpus is then broken down into 1 - 5 N-grams. Below are frequency bar charts of the top 25 N-grams.
+Given the large size of this corpus and limited computational resources, the cleaned data set is randomly sampled. 1/100th of the lines are used. This sampled corpus is then broken down into 1 - 5 N-grams. Below are frequency bar charts of the top 25 N-grams. It is interesting how quickly the frequencies drop off in all five bar charts.
 
 ```{r,cache=TRUE,echo=FALSE}
 suppressMessages(library(qdap))
