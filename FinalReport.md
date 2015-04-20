@@ -22,7 +22,6 @@ $$
 \text{ where }n = 1,2,3,4,5
 $$
 
-A backoff alogrithm is also implemented. When the previous n words cannot be matched, the n-1 previous words are searched for a match, then the n-2, then n-3, etc. If the word can not be found "UNK" is returned as the word is unknown to the dataset.
 
 
 How to use the application?
